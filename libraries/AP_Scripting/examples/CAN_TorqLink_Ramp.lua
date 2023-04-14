@@ -3,6 +3,9 @@
 -- Load CAN driver, using the scripting protocol and with a buffer size of 8
 local driver = CAN.get_device(8)
 
+local DA_MASK = 0x0000FF00
+local SA_MASK = 0x000000FF
+local PF_MASK = 0x00FF0000
 
 function setSpeed(s)
     -- send speed control command
@@ -100,13 +103,27 @@ function get_frame()
 	return false
 end
 
+function get_pgn(can_id)
+	sa = SA_MASK & can_id
+	pf = (PF_MASK & can_id) >> 16
+	da = (DA_MASK & can_id) >> 8
+	
+	if pf >= 240 then
+		pgn = pf * 256 + da
+		da = 0xFF
+	else
+		pgn = pf * 256
+	end
+	return pgn
+end
+
 function check_ready()
 	-- see if we got any frames
 	frame = get_frame()
 	if frame then
-		local id = tostring(frame:id())
-		-- TODO: Properly parse CAN ID to check message PGN
-		if id == "2566853398" then -- check if Torqeedo is ready by this message
+		id = tostring(frame:id())
+		pgn = tostring(get_pgn(frame:id()))
+		if pgn == "65299" then -- check if Torqeedo is ready by this message
 			ready = frame:data(4) >> 7 -- Check first flag of thruster status bitmap
 
 			if ready == 1 then
