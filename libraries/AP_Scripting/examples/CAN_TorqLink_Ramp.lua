@@ -61,7 +61,7 @@ timeout = 0
 startTime = 0
 function update()
 	-- Go back to idle if lost connection
-	if not show_frame() then
+	if not get_frame() then
 		timeout = timeout+1
 		if timeout > maxTimeout then
 			timeout = maxTimeout
@@ -75,29 +75,26 @@ function update()
 		timeout = 0
 	end
 	
-	-- Wait for thruster startup
-	if (millis() - startTime) > 15000 then
-		-- Set direction and motor speed
-		if speed == 0 then
-			setTransmission(125)
-		else
-			setTransmission(dir)
-		end
-		setSpeed(speed)
-		if speed < 100 then
-			speed = speed+1
-		end
+	-- Set direction and motor speed
+	if speed == 0 then
+		setTransmission(125)
+	else
+		setTransmission(dir)
+	end
+	setSpeed(speed)
+	if speed < 100 then
+		speed = speed+1
 	end
 	return update, 50
 end
 
-function show_frame()
+function get_frame()
 	if driver then
 		frame = driver:read_frame()
 		if frame then
 			local id = tostring(frame:id())
-			gcs:send_text(5,string.format("CAN[%u] msg from " .. id .. ": %i, %i, %i, %i, %i, %i, %i, %i", 1, frame:data(0), frame:data(1), frame:data(2), frame:data(3), frame:data(4), frame:data(5), frame:data(6), frame:data(7)))
-			return true
+			--gcs:send_text(5,string.format("CAN[%u] msg from " .. id .. ": %i, %i, %i, %i, %i, %i, %i, %i", 1, frame:data(0), frame:data(1), frame:data(2), frame:data(3), frame:data(4), frame:data(5), frame:data(6), frame:data(7)))
+			return frame
 		end
 	end
 	return false
@@ -105,10 +102,18 @@ end
 
 function check_ready()
 	-- see if we got any frames
-	if show_frame() then
-		gcs:send_text(0, "Gained connection with TQ")
-		startTime = millis() -- set connection timestamp
-		return update()
+	frame = get_frame()
+	if frame then
+		local id = tostring(frame:id())
+		-- TODO: Properly parse CAN ID to check message PGN
+		if id == "2566853398" then -- check if Torqeedo is ready by this message
+			ready = frame:data(4) >> 7 -- Check first flag of thruster status bitmap
+
+			if ready == 1 then
+				gcs:send_text(0, "TQ Ready")
+				return update, 2000 -- Need to wait for thruster to be ready
+			end
+		end
 	end
 
 	return check_ready, 10
